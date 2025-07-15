@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Room {{ room_code }} | watchwithme</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500&display=swap');
+    body {
+      font-family: 'Montserrat', Arial, sans-serif;
+      background: linear-gradient(135deg, #232526 0%, #0f2027 100%);
+      margin: 0;
+      padding: 0;
+      color: #f0f4f8;
+      min-height: 100vh;
+    }
+    h2 {
+      text-align: center;
+      margin-top: 32px;
+      font-size: 2rem;
+      letter-spacing: 1px;
+    }
+    #player {
+      margin: 32px auto 24px auto;
+      max-width: 700px;
+      border-radius: 18px;
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.25);
+      overflow: hidden;
+      background: #181818;
+      padding-bottom: 18px;
+    }
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      background: #111;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    #localVideoPlayer {
+      width: 100%;
+      max-height: 400px;
+      background: #000;
+      display: block;
+      border-radius: 12px 12px 0 0;
+    }
+    #reactionOverlay {
+      position: absolute;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: rgba(30,30,30,0.97);
+      border-radius: 0 0 12px 12px;
+      position: relative;
+    }
+    .controls button {
+      background: none;
+      border: none;
+      color: #25d366;
+      font-size: 1.4rem;
+      cursor: pointer;
+      transition: color 0.2s, transform 0.2s;
+      outline: none;
+    }
+    .controls button:hover {
+      color: #128c7e;
+      transform: scale(1.15);
+    }
+    #seekBar, #volumeBar {
+      accent-color: #25d366;
+      cursor: pointer;
+    }
+    #seekBar {
+      flex: 1;
+      height: 4px;
+    }
+    #volumeBar {
+      width: 80px;
+    }
+    #currentTime, #duration {
+      font-size: 0.95rem;
+      color: #b2b2b2;
+      min-width: 40px;
+      text-align: center;
+    }
+    #reactionBar {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      margin: 18px 0 0 0;
+      padding-bottom: 8px;
+    }
+    .reaction-btn {
+      background: #232526;
+      border: none;
+      border-radius: 50%;
+      font-size: 2rem;
+      width: 48px;
+      height: 48px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 2px 8px rgba(31, 38, 135, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      outline: none;
+    }
+    .reaction-btn:hover {
+      background: #25d366;
+      transform: scale(1.15);
+      box-shadow: 0 4px 16px #25d36644;
+    }
+    @media (max-width: 600px) {
+      #player { max-width: 98vw; }
+      .controls { flex-wrap: wrap; gap: 6px; }
+      #volumeBar { width: 50px; }
+      .reaction-btn { width: 38px; height: 38px; font-size: 1.4rem; }
+    }
+    form {
+      text-align: center;
+      margin: 24px 0 0 0;
+    }
+    input[type="text"]#roomLink {
+      padding: 8px 12px;
+      width: 60%;
+      border-radius: 8px;
+      border: none;
+      background: #232526;
+      color: #f0f4f8;
+      font-size: 1rem;
+      margin-right: 8px;
+    }
+    button[onclick="copyRoomLink()"] {
+      padding: 8px 18px;
+      background: linear-gradient(90deg, #25d366 0%, #128c7e 100%);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    button[onclick="copyRoomLink()"]:hover {
+      background: linear-gradient(90deg, #128c7e 0%, #25d366 100%);
+      transform: scale(1.04);
+    }
+  </style>
+</head>
+<body>
+  <h2>Room: {{ room_code }}</h2>
+  <p>
+    Share this link with friends:
+    <input type="text" id="roomLink" value="{{ request.host_url }}watch/{{ room_code }}" readonly style="width:60%;" />
+    <button onclick="copyRoomLink()">Copy</button>
+  </p>
+
+  <div id="player">
+    <input type="file" accept="video/*" id="videoFileInput" onchange="handleVideoUpload(event)" style="margin: 18px 0 8px 18px;" />
+    <div class="video-wrapper" style="position:relative;">
+      <video id="localVideoPlayer" tabindex="0"></video>
+      <div id="reactionOverlay"></div>
+      <div class="controls" id="customControls">
+        <button id="playPauseBtn" title="Play/Pause">▶️</button>
+        <input type="range" id="seekBar" min="0" value="0" step="0.1">
+        <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+        <input type="range" id="volumeBar" min="0" max="1" step="0.01" value="1" title="Volume">
+        <button id="fullscreenBtn" title="Fullscreen">⛶</button>
+      </div>
+    </div>
+    <div id="reactionBar">
+      <button class="reaction-btn" data-emoji="😂" title="Laugh">😂</button>
+      <button class="reaction-btn" data-emoji="❤️" title="Love">❤️</button>
+      <button class="reaction-btn" data-emoji="😮" title="Wow">😮</button>
+      <button class="reaction-btn" data-emoji="👏" title="Clap">👏</button>
+      <button class="reaction-btn" data-emoji="😢" title="Sad">😢</button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const room = "{{ room_code }}";
+    const user = Math.floor(Math.random() * 9999);
+
+    socket.emit('join_room', { room, user });
+
+    // Video file upload
+    function handleVideoUpload(event) {
+      const file = event.target.files[0];
+      const url = URL.createObjectURL(file);
+
+      const videoPlayer = document.getElementById('localVideoPlayer');
+      videoPlayer.src = url;
+      videoPlayer.play();
+
+      // Notify others to select the same file
+      socket.emit('local_video_selected', { room, fileName: file.name });
+    }
+
+    socket.on('local_video_selected', data => {
+      alert(`Another user selected a local video file (${data.fileName}). Please select the same file to sync playback.`);
+    });
+
+    // Custom player controls
+    const video = document.getElementById('localVideoPlayer');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const seekBar = document.getElementById('seekBar');
+    const volumeBar = document.getElementById('volumeBar');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const currentTimeSpan = document.getElementById('currentTime');
+    const durationSpan = document.getElementById('duration');
+
+    // Play/Pause
+    playPauseBtn.onclick = () => {
+      if (video.paused) video.play();
+      else video.pause();
+    };
+    video.onplay = () => { playPauseBtn.textContent = '⏸️'; };
+    video.onpause = () => { playPauseBtn.textContent = '▶️'; };
+
+    // Seek
+    video.ontimeupdate = () => {
+      seekBar.value = video.currentTime;
+      currentTimeSpan.textContent = formatTime(video.currentTime);
+    };
+    video.onloadedmetadata = () => {
+      seekBar.max = video.duration;
+      durationSpan.textContent = formatTime(video.duration);
+    };
+    seekBar.oninput = () => {
+      video.currentTime = seekBar.value;
+    };
+
+    // Volume
+    volumeBar.oninput = () => {
+      video.volume = volumeBar.value;
+    };
+
+    // Fullscreen
+    fullscreenBtn.onclick = () => {
+      if (video.requestFullscreen) video.requestFullscreen();
+      else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+      else if (video.msRequestFullscreen) video.msRequestFullscreen();
+    };
+
+    // Format time helper
+    function formatTime(sec) {
+      sec = Math.floor(sec);
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    // Set initial states
+    video.volume = 1;
+    playPauseBtn.textContent = '▶️';
+
+    // Sync play/pause/seek
+    video.addEventListener('play', () => {
+      socket.emit('sync_local_video', { room, time: video.currentTime, is_playing: true });
+    });
+    video.addEventListener('pause', () => {
+      socket.emit('sync_local_video', { room, time: video.currentTime, is_playing: false });
+    });
+    video.addEventListener('seeked', () => {
+      socket.emit('sync_local_video', { room, time: video.currentTime, is_playing: !video.paused });
+    });
+
+    socket.on('sync_local_video', data => {
+      if (Math.abs(video.currentTime - data.time) > 1) {
+        video.currentTime = data.time;
+      }
+      if (data.is_playing && video.paused) video.play();
+      if (!data.is_playing && !video.paused) video.pause();
+    });
+
+    // --- Reaction logic ---
+    const reactionBar = document.getElementById('reactionBar');
+    const reactionOverlay = document.getElementById('reactionOverlay');
+
+    reactionBar.querySelectorAll('.reaction-btn').forEach(btn => {
+      btn.onclick = () => {
+        const emoji = btn.getAttribute('data-emoji');
+        showReaction(emoji);
+        socket.emit('send_reaction', { room, emoji });
+      };
+    });
+
+    socket.on('send_reaction', data => {
+      showReaction(data.emoji);
+    });
+
+    function showReaction(emoji) {
+      const el = document.createElement('span');
+      el.textContent = emoji;
+      el.style.position = 'absolute';
+      el.style.left = Math.random() * 80 + 10 + '%';
+      el.style.bottom = '10px';
+      el.style.fontSize = '2.2rem';
+      el.style.opacity = 1;
+      el.style.transition = 'transform 1.2s cubic-bezier(.4,2,.6,1), opacity 1.2s';
+      el.style.transform = 'translateY(0)';
+      reactionOverlay.appendChild(el);
+
+      setTimeout(() => {
+        el.style.transform = 'translateY(-120px)';
+        el.style.opacity = 0;
+      }, 50);
+
+      setTimeout(() => {
+        reactionOverlay.removeChild(el);
+      }, 1300);
+    }
+    // --- End Reaction logic ---
+
+    function copyRoomLink() {
+      const input = document.getElementById('roomLink');
+      input.select();
+      input.setSelectionRange(0, 99999); // For mobile
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert("Link copied to clipboard!");
+      });
+    }
+  </script>
+</body>
+</html>
