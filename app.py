@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, session, url_for
 from flask_socketio import SocketIO, emit, join_room
 import random
 import string
-
+app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
 app = Flask(__name__)
 app.secret_key = 'watchwithme-secret'
 socketio = SocketIO(app, async_mode='eventlet')
